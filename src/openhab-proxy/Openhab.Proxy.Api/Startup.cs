@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Microsoft.ApplicationInsights.Extensibility;
@@ -110,7 +111,14 @@ namespace Openhab.Proxy.Api
 
             }
 
-            app.UseSwagger();
+            app.UseSwagger(options =>
+            {
+
+                options.PreSerializeFilters.Add((swagger, httpReq) =>
+                {
+                    swagger.Servers = new List<OpenApiServer> { new OpenApiServer { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}" } };
+                });
+            });
             app.UseSwaggerUI(options =>
             {
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "Openhab Proxy API");
