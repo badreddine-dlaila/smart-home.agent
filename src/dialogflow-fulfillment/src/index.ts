@@ -161,7 +161,7 @@ assistant.intent('demo.smarthome.deviceType.state', async (conv, { deviceType })
                 key: `${_openhabItem.name}`,
             },
             image: new Image({
-                url: `https://robohash.org/set_set5/${Math.random().toString(36).slice(2)}`,
+                url: `https://robohash.org/set_set5/${_openhabItem.name}`,
                 alt: 'yet another alternative text',
             })
         });
