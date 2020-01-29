@@ -1,13 +1,13 @@
 import express from 'express';
 import * as bodyParser from 'body-parser';
-import { dialogflow, actionssdk, Image, Carousel, BasicCard, Button, SimpleResponse } from 'actions-on-google';
+import { dialogflow, Image, SimpleResponse, List } from 'actions-on-google';
 import { OpenhabClient } from '../src/openhabClient'
 import { Item } from './models/openhab/item.model';
 import { Device } from "./models/device.model";
 import { Room } from "./models/room.model";
 import { Zone } from './models/zone.model';
 
-const openhabClient = new OpenhabClient('https://openhabproxyapi-dev-as.azurewebsites.net', '4285833b-753e-4c29-a38b-a280da6250fa');
+const openhabClient = new OpenhabClient('https://openhabproxyapi-dev-as.azurewebsites.net', '<key>');
 
 const server = express();
 const assistant = dialogflow({ debug: false });
@@ -15,7 +15,7 @@ const assistant = dialogflow({ debug: false });
 server.set('port', process.env.PORT || 8080);
 server.use(bodyParser.json({ type: 'application/json' }));
 
-assistant.intent('demo.smarthome.device.state', async (conv, { room, deviceType, all }) => {
+assistant.intent('demo.smarthome.device.state', async (conv, { room, deviceType }) => {
     let _device: Device;
     let _room: Room;
     let _openhabItem: Item;
@@ -118,7 +118,6 @@ assistant.intent('demo.smarthome.zone.command', async (conv, { zone, deviceType,
                 // re-fetch updated state  
                 await openhabClient.getItem(_device.id).then(x => updatedState = x.state);
             })
-        responseMessage.concat(`=> ${deviceType} has benn updated from ${initialState} to ${updatedState}  \n`);
         responseMessage = responseMessage.concat(`=> ${deviceType} has benn updated from ${initialState} to ${updatedState}  \n`);
 
     }));
@@ -127,6 +126,65 @@ assistant.intent('demo.smarthome.zone.command', async (conv, { zone, deviceType,
         text: responseMessage,
         speech: 'Are you talking to me ?'
     }));
+});
+
+assistant.intent('demo.smarthome.deviceType.state', async (conv, { deviceType }) => {
+    let _devices: Device[];
+    let _resposneListItems: any[] = [];
+
+    // fetch configurations 
+    await openhabClient.getAllDevices()
+        .then(x => _devices = x.filter(d => d.type == deviceType));
+
+    // respond with appropriate sentense if device list is undefined or empty
+    if (!_devices || _devices.length === 0) {
+        conv.close(`Sorry, couldn't find any device of type ${deviceType}`);
+        return;
+    }
+
+    // here, al least one device is found
+    let responseText: string = '';
+    await Promise.all(_devices.map(async _device => {
+        let _openhabItem: Item;
+        // get the initial state
+        await openhabClient.getItem(_device.id)
+            .then(x => {
+                _openhabItem = x
+            });
+        let _deviceState = isNaN(+_openhabItem.state) ? _openhabItem.state : (Math.round(+_openhabItem.state * 100) / 100).toFixed(0);
+        responseText = responseText.concat(`#${_device.description} in ${_device.room} => ${_deviceState}#`);
+
+        _resposneListItems.push({
+            title: `${_openhabItem.name}`,
+            description: `${_device.description} in ${_device.room} is ${_deviceState}`,
+            optionInfo: {
+                key: `${_openhabItem.name}`,
+            },
+            image: new Image({
+                url: `https://robohash.org/set_set5/${Math.random().toString(36).slice(2)}`,
+                alt: 'yet another alternative text',
+            })
+        });
+    }));
+
+    // close conversation
+    if (conv.surface.capabilities.has('actions.capability.SCREEN_OUTPUT') && conv.surface.capabilities.has('actions.capability.WEB_BROWSER')) {
+        // more here => https://developers.google.com/assistant/actions/build/json/conversation-webhook-json
+        // and here https://developers.google.com/assistant/actions/reference/conversation-api-playground
+        // this one is a good reference for capabilities https://developers.google.com/assistant/conversational/surface-capabilities 
+        let _resposneList = new List({
+            title: 'This is all what i found',
+            items: _resposneListItems
+        });
+        conv.ask('here is what I found little human ...')
+        conv.close(_resposneList);
+    } else {
+        conv.close(new SimpleResponse({
+            text: responseText,
+            speech: 'Are you talking to me ?'
+        }));
+    }
+
 });
 
 server.post('/webhook', assistant);
